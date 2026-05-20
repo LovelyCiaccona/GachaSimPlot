@@ -1,6 +1,8 @@
 #include <algorithm>
+#include <atomic>
 #include <cmath>
 #include <cstdint>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -9,6 +11,7 @@
 #include <random>
 #include <sstream>
 #include <string>
+#include <thread>
 #include <vector>
 
 namespace fs = std::filesystem;
@@ -31,6 +34,7 @@ constexpr int WEAPON_TEN_PULL_COST = 1980;
 struct Options {
     std::string sim = "endfield-joint";
     int samples = 10000;
+    int threads = 4;
     int target_char = 1;
     int target_weapon = 1;
     long long initial_arsenal_quota = 0;
@@ -123,6 +127,7 @@ void print_help(const char* exe) {
         << "Usage: " << exe << " --sim endfield-joint|wuwa [options]\n"
         << "Options:\n"
         << "  --samples N                 sample count, default 10000\n"
+        << "  --threads N                 worker threads, default 4\n"
         << "  --target-char N             target limited characters, default 1\n"
         << "  --target-weapon N           target limited weapons, default 1\n"
         << "  --initial-arsenal-quota N   initial arsenal quota, default 0\n"
@@ -189,6 +194,8 @@ Options parse_args(int argc, char** argv) {
             opt.sim = need_value(arg);
         } else if (arg == "--samples") {
             if (!parse_int(need_value(arg), opt.samples)) throw std::runtime_error("Invalid --samples");
+        } else if (arg == "--threads") {
+            if (!parse_int(need_value(arg), opt.threads)) throw std::runtime_error("Invalid --threads");
         } else if (arg == "--target-char") {
             if (!parse_int(need_value(arg), opt.target_char)) throw std::runtime_error("Invalid --target-char");
         } else if (arg == "--target-weapon") {
@@ -218,6 +225,7 @@ Options parse_args(int argc, char** argv) {
         throw std::runtime_error("Only --sim endfield-joint and --sim wuwa are implemented");
     }
     if (opt.samples <= 0) throw std::runtime_error("--samples must be positive");
+    if (opt.threads <= 0) throw std::runtime_error("--threads must be positive");
     if (opt.target_char < 0) throw std::runtime_error("--target-char must be non-negative");
     if (opt.target_weapon < 0) throw std::runtime_error("--target-weapon must be non-negative");
     if (opt.initial_arsenal_quota < 0) throw std::runtime_error("--initial-arsenal-quota must be non-negative");
@@ -775,6 +783,7 @@ void write_stats(const fs::path& path, const Options& opt, const Metrics& m) {
     out << "metric,value\n";
     out << "simulator," << opt.sim << "\n";
     out << "samples," << opt.samples << "\n";
+    out << "threads," << opt.threads << "\n";
     out << "target_char," << opt.target_char << "\n";
     out << "target_weapon," << opt.target_weapon << "\n";
     out << "initial_arsenal_quota," << opt.initial_arsenal_quota << "\n";
@@ -809,8 +818,10 @@ void write_summary(const fs::path& path, const Options& opt, const Metrics& m, u
     out << "{\n";
     out << "  \"simulator\": \"" << json_escape(opt.sim) << "\",\n";
     out << "  \"samples\": " << opt.samples << ",\n";
+    out << "  \"threads\": " << opt.threads << ",\n";
     out << "  \"seed\": " << seed << ",\n";
     out << "  \"params\": {\n";
+    out << "    \"threads\": " << opt.threads << ",\n";
     out << "    \"target_char\": " << opt.target_char << ",\n";
     out << "    \"target_weapon\": " << opt.target_weapon << ",\n";
     out << "    \"initial_arsenal_quota\": " << opt.initial_arsenal_quota << ",\n";
@@ -868,6 +879,7 @@ int main(int argc, char** argv) {
 
         std::cout << "START simulator=" << opt.sim
                   << " samples=" << opt.samples
+                  << " threads=" << opt.threads
                   << " target_char=" << opt.target_char
                   << " target_weapon=" << opt.target_weapon
                   << " initial_arsenal_quota=" << opt.initial_arsenal_quota
@@ -876,18 +888,76 @@ int main(int argc, char** argv) {
                   << " seed=" << seed
                   << " out=" << opt.out_dir << "\n";
 
+        const int thread_count = std::max(1, std::min(opt.threads, opt.samples));
+        results.resize(opt.samples);
+
+        std::atomic<int> completed{0};
+        std::atomic<bool> finished{false};
         const int progress_step = std::max(1, opt.samples / 20);
-        WuWaSimulator wuwa_sim(rng);
-        for (int i = 0; i < opt.samples; ++i) {
-            if (opt.sim == "wuwa") {
-                results.push_back(wuwa_sim.simulate_one(opt));
-            } else {
-                results.push_back(simulate_one(opt, rng));
+
+        std::thread reporter([&]() {
+            int next_report = progress_step;
+            int last_reported = 0;
+            while (!finished.load(std::memory_order_relaxed) ||
+                   completed.load(std::memory_order_relaxed) < opt.samples) {
+                const int current = completed.load(std::memory_order_relaxed);
+                while (current >= next_report && next_report <= opt.samples) {
+                    std::cout << "PROGRESS " << next_report << "/" << opt.samples << "\n";
+                    last_reported = next_report;
+                    next_report += progress_step;
+                }
+                std::this_thread::sleep_for(std::chrono::milliseconds(200));
             }
-            if ((i + 1) % progress_step == 0 || i + 1 == opt.samples) {
-                std::cout << "PROGRESS " << (i + 1) << "/" << opt.samples << "\n";
+            const int final_completed = completed.load(std::memory_order_relaxed);
+            if (final_completed > last_reported) {
+                std::cout << "PROGRESS " << final_completed << "/" << opt.samples << "\n";
             }
+        });
+
+        std::vector<std::thread> workers;
+        workers.reserve(thread_count);
+        const int base = opt.samples / thread_count;
+        const int remainder = opt.samples % thread_count;
+
+        for (int t = 0; t < thread_count; ++t) {
+            const int count = base + (t < remainder ? 1 : 0);
+            const int start = t * base + std::min(t, remainder);
+            workers.emplace_back([&, t, start, count]() {
+                std::seed_seq seq{
+                    seed,
+                    static_cast<unsigned int>(t + 1),
+                    static_cast<unsigned int>(opt.samples),
+                    static_cast<unsigned int>(opt.target_char),
+                    static_cast<unsigned int>(opt.target_weapon),
+                    static_cast<unsigned int>(opt.sim == "wuwa" ? 1 : 0)
+                };
+                std::mt19937 local_rng(seq);
+                WuWaSimulator wuwa_sim(local_rng);
+                int local_completed = 0;
+                const int progress_batch = 64;
+                for (int i = 0; i < count; ++i) {
+                    if (opt.sim == "wuwa") {
+                        results[start + i] = wuwa_sim.simulate_one(opt);
+                    } else {
+                        results[start + i] = simulate_one(opt, local_rng);
+                    }
+                    ++local_completed;
+                    if (local_completed >= progress_batch) {
+                        completed.fetch_add(local_completed, std::memory_order_relaxed);
+                        local_completed = 0;
+                    }
+                }
+                if (local_completed > 0) {
+                    completed.fetch_add(local_completed, std::memory_order_relaxed);
+                }
+            });
         }
+
+        for (auto& worker : workers) {
+            worker.join();
+        }
+        finished.store(true, std::memory_order_relaxed);
+        reporter.join();
 
         const Metrics metrics = compute_metrics(opt, results);
         const fs::path out_dir(opt.out_dir);

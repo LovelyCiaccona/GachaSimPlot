@@ -116,6 +116,7 @@ def parse_int(value, default, min_value=0):
 def build_command(params, out_dir):
     simulator = params.get("simulator", "endfield-joint")
     samples = parse_int(params.get("samples"), 1000000, 1)
+    threads = parse_int(params.get("threads"), 4, 1)
     target_char = parse_int(params.get("target_char"), 1, 0)
     target_weapon = parse_int(params.get("target_weapon"), 1, 0)
     initial_quota = parse_int(params.get("initial_arsenal_quota", params.get("initial_weapon_points")), 0, 0)
@@ -134,6 +135,8 @@ def build_command(params, out_dir):
         simulator,
         "--samples",
         str(samples),
+        "--threads",
+        str(threads),
         "--target-char",
         str(target_char),
         "--target-weapon",
@@ -151,6 +154,7 @@ def build_command(params, out_dir):
     normalized = {
         "simulator": simulator,
         "samples": samples,
+        "threads": threads,
         "target_char": target_char,
         "target_weapon": target_weapon,
         "initial_arsenal_quota": initial_quota,
@@ -308,7 +312,7 @@ class Handler(BaseHTTPRequestHandler):
                                 "default": 0,
                                 "min": 0,
                             },
-                            {"id": "seed", "label": "随机种子（0为随机）", "type": "number", "default": 0, "min": 0},
+                            {"id": "threads", "label": "线程数", "type": "number", "default": 4, "min": 1},
                         ],
                     },
                     {
@@ -320,7 +324,7 @@ class Handler(BaseHTTPRequestHandler):
                             {"id": "target_weapon", "label": "目标五星武器", "type": "number", "default": 1, "min": 0},
                             {"id": "initial_coral", "label": "初始珊瑚", "type": "number", "default": 0, "min": 0},
                             {"id": "exchange_enabled", "label": "允许珊瑚兑换", "type": "boolean", "default": True},
-                            {"id": "seed", "label": "随机种子（0为随机）", "type": "number", "default": 0, "min": 0},
+                            {"id": "threads", "label": "线程数", "type": "number", "default": 4, "min": 1},
                         ],
                     }
                 ],

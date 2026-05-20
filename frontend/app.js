@@ -131,8 +131,8 @@ function renderRunParams(run) {
   const simLabel = simId === "wuwa" ? "鸣潮" : "终末地";
   const extra = simId === "wuwa"
     ? [["初始珊瑚", params.initial_coral], ["兑换", params.exchange_enabled ? "开" : "关"]]
-    : [["初始武库配额", params.initial_arsenal_quota], ["种子", params.seed || "随机"]];
-  const items = [["模拟器", simLabel], ["样本", params.samples], ["目标角色", params.target_char], ["目标武器", params.target_weapon], ...extra];
+    : [["初始武库配额", params.initial_arsenal_quota]];
+  const items = [["模拟器", simLabel], ["样本", params.samples], ["线程", params.threads], ["目标角色", params.target_char], ["目标武器", params.target_weapon], ...extra];
   runParams.innerHTML = items.map(([k, v]) => `<span>${k}: ${v ?? "-"}</span>`).join("");
 }
 
@@ -353,7 +353,7 @@ async function loadRuns() {
       const activeClass = selectedRunId === run.id ? "active" : "";
       return `<button class="run-item ${activeClass}" data-run-id="${run.id}">
         <span class="main">${simLabel} · C${params.target_char ?? "-"} W${params.target_weapon ?? "-"} · N${params.samples ?? "-"}</span>
-        <small>${run.id} · ${status} · ${resource}</small>
+        <small>${run.id} · ${status} · ${resource} · T${params.threads ?? "-"}</small>
       </button>`;
     })
     .join("");
