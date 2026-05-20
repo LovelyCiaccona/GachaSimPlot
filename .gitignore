@@ -1,0 +1,5 @@
+﻿data/runs/
+__pycache__/
+python_env/
+*.exe
+*.log

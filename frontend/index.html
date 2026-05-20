@@ -1,0 +1,89 @@
+<!doctype html>
+<html lang="zh-CN">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>抽卡模拟控制台</title>
+    <link rel="stylesheet" href="/style.css" />
+  </head>
+  <body>
+    <main class="app">
+      <aside class="sidebar">
+        <header class="brand">
+          <h1>抽卡模拟</h1>
+          <span>联合模拟控制台</span>
+        </header>
+
+        <form id="run-form" class="params">
+          <label>
+            <span>模拟器</span>
+            <select id="simulator"></select>
+          </label>
+          <div id="dynamic-fields"></div>
+          <button id="start-btn" type="submit">开始模拟</button>
+        </form>
+
+        <section class="history">
+          <div class="history-head">
+            <div class="section-title">历史任务</div>
+            <button id="delete-run-btn" type="button" class="danger-btn" disabled>删除任务</button>
+          </div>
+          <div id="run-list" class="run-list"></div>
+        </section>
+      </aside>
+
+      <section class="workspace">
+        <div class="status-row">
+          <div>
+            <div class="label">当前任务</div>
+            <div id="current-run" class="run-id">未运行</div>
+            <div id="run-params" class="run-params"></div>
+          </div>
+          <div>
+            <div class="label">状态</div>
+            <div id="run-status" class="status idle">idle</div>
+          </div>
+        </div>
+
+        <section class="metrics" id="metrics"></section>
+
+        <details class="rule-note">
+          <summary>指标说明</summary>
+          <div id="rule-note-body"></div>
+        </details>
+
+        <section class="chart-panel">
+          <div id="chart-title" class="section-title">抽数分布</div>
+          <div class="chart-wrap">
+            <canvas id="distribution-chart" width="1000" height="420"></canvas>
+            <div id="chart-tooltip" class="chart-tooltip"></div>
+          </div>
+        </section>
+
+        <section class="data-grid">
+          <div>
+            <div class="section-title">分位数</div>
+            <div class="table-wrap">
+              <table>
+                <thead>
+                  <tr>
+                    <th>分位数</th>
+                    <th id="percentile-value-header">抽数</th>
+                  </tr>
+                </thead>
+                <tbody id="percentile-table"></tbody>
+              </table>
+            </div>
+          </div>
+          <div>
+            <div class="section-title">日志</div>
+            <pre id="logs" class="logs"></pre>
+            <div id="downloads" class="downloads"></div>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <script src="/app.js"></script>
+  </body>
+</html>
